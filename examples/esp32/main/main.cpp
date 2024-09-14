@@ -8,6 +8,7 @@
 #include <btstack_stdio_esp32.h>
 #include <uni.h>
 
+
 #include "sdkconfig.h"
 
 // Sanity check
@@ -16,9 +17,9 @@
 #endif
 
 // Defined in my_platform.c
-struct uni_platform* get_my_platform(void);
+extern "C" struct uni_platform* get_my_platform(void);
 
-int app_main(void) {
+extern "C" int app_main(void) {
     // hci_dump_open(NULL, HCI_DUMP_STDOUT);
 
     // Don't use BTstack buffered UART. It conflicts with the console.
