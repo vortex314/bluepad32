@@ -5,6 +5,7 @@ extern "C" {
 
 #include <uni.h>
 }
+#include <driver/gpio.h>
 #include <esp_timer.h>
 #include "esp_gtw.h"
 // Custom "instance"
@@ -13,6 +14,7 @@ EspGtw esp_gtw;
 FrameEncoder frame_encoder(200);
 FrameDecoder frame_decoder(200);
 typedef enum Ps4Event { Connected = 0, Disconnected, Data, OOB } Ps4Event;
+uint32_t send_counter = 0;
 
 bool gamepad_equal(uni_gamepad_t* gp1, uni_gamepad_t* gp2) {
     if (gp1 == NULL || gp2 == NULL) {
@@ -25,6 +27,71 @@ bool gamepad_equal(uni_gamepad_t* gp1, uni_gamepad_t* gp2) {
     }
     return true;
 }
+// TODO
+
+#define GPIO_LED GPIO_NUM_2
+
+void led_toggle() {
+    static bool led_state = false;
+    static bool led_initialized = false;
+    if (!led_initialized) {
+        led_initialized = true;
+        gpio_reset_pin(GPIO_LED);
+        gpio_set_direction(GPIO_LED, GPIO_MODE_OUTPUT);
+    };
+    led_state = !led_state;
+    gpio_set_level(GPIO_LED, led_state);
+}
+
+struct PropDescriptor {
+    uint16_t id;
+    const char* name;
+    const char* description;
+    uint8_t ValueType;
+    uint8_t ValueMode;
+} props[]={
+    {0, "dpad", "Dpad", ValueType::UINT,ValueMode::READ},
+    {1, "axis_x", "Left Stick X", ValueType::INT,ValueMode::READ},
+    {2, "axis_y", "Left Stick Y", ValueType::INT,ValueMode::READ},
+    {3, "axis_rx", "Right Stick X", ValueType::INT,ValueMode::READ},
+    {4, "axis_ry", "Right Stick Y", ValueType::INT,ValueMode::READ},
+    {5, "buttons", "Buttons", ValueType::UINT,ValueMode::READ},
+    {6, "misc_buttons", "Misc Buttons", ValueType::UINT,ValueMode::READ},
+    {7, "gyro_x", "Gyro X axis", ValueType::INT,ValueMode::READ},
+    {8, "gyro_y", "Gyro Y axis", ValueType::INT,ValueMode::READ},
+    {9, "gyro_z", "Gyro Z axis", ValueType::INT,ValueMode::READ},
+    {10, "accel_x", "Accelerometer X Axis ", ValueType::INT,ValueMode::READ},
+    {11, "accel_y", "Accelerometer Y Axis ", ValueType::INT,ValueMode::READ},
+    {12, "accel_z", "Accelerometer Z Axis ", ValueType::INT,ValueMode::READ},
+    {13,"rumble","Rumble the controller",ValueType::UINT,ValueMode::WRITE},
+    {14,"led_green","Green led on controller",ValueType::UINT,ValueMode::WRITE},
+    {15,"led_red","Red led on controller",ValueType::UINT,ValueMode::WRITE},
+    {16,"led_blue","Blue led on controller",ValueType::UINT,ValueMode::WRITE}
+};
+
+std::vector<uint8_t> desc_message() {
+    std::vector<uint8_t> data;
+    frame_encoder.clear();
+    frame_encoder.encode_array();
+    struct MsgHeader desc_msg_header = {.dst = Option<uint32_t>::None(),
+                                        .src = Option<uint32_t>::Some(FNV("ps4")),
+                                        .msg_type = MsgType::Desc,
+                                        .msg_id = Option<uint32_t>::None()};
+    desc_msg_header.encode(frame_encoder);
+    frame_encoder.encode_array();
+    frame_encoder.encode_null();                 // id prop
+    frame_encoder.encode_str("ps4");             // name
+    frame_encoder.encode_str("PS4 Controller");  // description
+    frame_encoder.encode_end();
+    frame_encoder.encode_end();
+    frame_encoder.read_buffer(data);
+    return data;
+}
+
+ MsgHeader desc_msg_header = {.dst = Option<uint32_t>::None(),
+                                   .src = Option<uint32_t>::Some(FNV("ps4")),
+                                   .msg_type = MsgType::Desc,
+                                   .msg_id = Option<uint32_t>::None()};
 
 void send_event(Ps4Event event, uni_gamepad_t* gp) {
     std::vector<uint8_t> data;
@@ -36,11 +103,13 @@ void send_event(Ps4Event event, uni_gamepad_t* gp) {
         return;
     }
     prev_send = esp_timer_get_time();
-    memcpy(&prev_gamepad,gp,sizeof(uni_gamepad_t));
-    
-    MsgHeader header = {.dst = Option<uint32_t>::Some(0),
+    if (gp != NULL)
+        memcpy(&prev_gamepad, gp, sizeof(uni_gamepad_t));
+    led_toggle();
+
+    MsgHeader header = {.dst = Option<uint32_t>::None(),
                         .src = Option<uint32_t>::Some(FNV("ps4")),
-                        .msg_type = MsgType::Pub0Req,
+                        .msg_type = MsgType::Pub,
                         .msg_id = Option<uint32_t>::None()};
 
     frame_encoder.clear();
@@ -69,6 +138,28 @@ void send_event(Ps4Event event, uni_gamepad_t* gp) {
     frame_encoder.encode_end();
     frame_encoder.read_buffer(data);
     esp_gtw.send(data.data(), data.size());
+    if (send_counter++ % 10 == 0) {
+        esp_gtw.send(desc_message().data(), desc_message().size());
+        static int prop_counter = 0;
+        if (prop_counter < sizeof(props) / sizeof(PropDescriptor)) {
+            frame_encoder.clear();
+            frame_encoder.encode_array();
+            desc_msg_header.encode(frame_encoder);
+            frame_encoder.encode_array();
+            frame_encoder.encode_uint32(props[prop_counter].id);
+            frame_encoder.encode_str(props[prop_counter].name);
+            frame_encoder.encode_str(props[prop_counter].description);
+            frame_encoder.encode_uint32(props[prop_counter].ValueType);
+            frame_encoder.encode_uint32(props[prop_counter].ValueMode);
+            frame_encoder.encode_end();
+            frame_encoder.encode_end();
+            frame_encoder.read_buffer(data);
+            esp_gtw.send(data.data(), data.size());
+            prop_counter++;
+        } else {
+            prop_counter = 0;
+        }
+    }
 }
 
 typedef struct my_platform_instance_s {

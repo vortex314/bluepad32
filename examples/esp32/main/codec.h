@@ -155,27 +155,35 @@ class FrameDecoder {
     Result<std::string> to_string();
 };
 
-#define FNV_PRIME 16777619
-#define FNV_OFFSET 2166136261
 
-constexpr uint32_t fnv1(uint32_t h, const char* s) {
-    return (*s == 0) ? h : fnv1((h * FNV_PRIME) ^ static_cast<uint32_t>(*s), s + 1);
+// FNV-1a hash function for 32-bit hash value
+constexpr uint32_t fnv1a_32_1(const char* str, uint32_t hash = 2166136261U) {
+    return *str == '\0' ? hash : fnv1a_32_1(str + 1, (hash ^ static_cast<uint32_t>(*str)) * 16777619U);
 }
 
-constexpr uint32_t FNV(const char* s) {
-    return fnv1(FNV_OFFSET, s);
+// Helper to compute the hash at compile time for a string literal
+template<std::size_t N>
+constexpr uint32_t FNV(const char(&str)[N]) {
+    return fnv1a_32_1(str);
 }
 
 typedef enum MsgType {
-    Alive = 0,
-    Pub0Req = 1,
-    Pub1Req,
-    PingReq,
-    NameReq,
-    DescReq,
-    SetReq,
-    GetReq,
+    Pub = 1,   // from = PubSUb, to = Set
+    Desc = 2, // contain name, description, type, etc
 } MsgType;
+
+typedef enum ValueType {
+    UINT =0,
+    INT = 1,
+    STR = 2,
+    BYTES = 3,
+    FLOAT = 4,
+} ValueType;
+
+typedef enum ValueMode {
+    READ = 0,
+    WRITE = 1,
+} ValueMode;
 
 class MsgHeader {
     public :

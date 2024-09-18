@@ -1,3 +1,7 @@
+# PS4 controller to ESPNOW
+
+Configure a ESP32 to capture PS4 events and broadcast them on ESP-NOW to be shared with robots and other stuff
+
 # Bluepad32 for ESP32
 
 Supports the different ESP32 chips:
