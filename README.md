@@ -1,3 +1,32 @@
+# PS4 console to ESP-NOW
+This repository uses the original bluepad32 code to capture ps4 events and send them on ESP-NOW.
+The events are encoded in CBOR serialization :
+Header:
+- to_topic : Option<uint32> => null
+- from_topic : Option<uint32> => FNV("ps4")
+- message_type : uint8 : Publish=1 or Info=2
+- message_id : Option<uint16> : null
+Payload :
+- ps4_event : uint8_t : Data = 1
+- dpad : uint8_t : left button pad
+- left_axis_x : int16 : joystick left x axis 
+- .....
+
+At regular intervals it also send via esp now the description of the topic and properties
+Header :
+- message_type : Info
+Payload
+- prop_id : Option<uint8> :  null for topic or otherwise index of property
+- name : str : name of property or topic
+- desc : str :  1 line description
+- value_type : int,uint,str,bytes,float,...
+- value_mode : read , write ,...
+Other features :
+- It also slows down the nbr of events per sec to an interval of 100msec, if there is no change.
+- it blinks the on-board esp32 led to indicate ransmission and alive
+- It shpuld also support to send ESP-NOW messages to the controller for rumble and led-control in a similar format as above, to_topic = FNV("ps4")
+
+
 # Bluepad32
 
 [![discord](https://img.shields.io/discord/775177861665521725.svg)](https://discord.gg/r5aMn6Cw5q)
