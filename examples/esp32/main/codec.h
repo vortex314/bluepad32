@@ -1,4 +1,5 @@
-
+#ifndef _CODEC_H_
+#define _CODEC_H_
 #include <Log.h>
 #include <errno.h>
 #include <stddef.h>
@@ -100,6 +101,7 @@ class FrameEncoder {
     Result<Void> encode_array();
     Result<Void> encode_map();
     Result<Void> encode_end();
+    Result<Void> add_map(int8_t key,int32_t value);
     Result<Void> encode_uint32(uint32_t input_value);
     Result<Void> encode_str(const char* str);
     Result<Void> encode_bstr(std::vector<uint8_t>& buffer);
@@ -166,50 +168,4 @@ template<std::size_t N>
 constexpr uint32_t FNV(const char(&str)[N]) {
     return fnv1a_32_1(str);
 }
-
-typedef enum MsgType {
-    Pub = 1,   // from = PubSUb, to = Set
-    Desc = 2, // contain name, description, type, etc
-} MsgType;
-
-typedef enum ValueType {
-    UINT =0,
-    INT = 1,
-    STR = 2,
-    BYTES = 3,
-    FLOAT = 4,
-} ValueType;
-
-typedef enum ValueMode {
-    READ = 0,
-    WRITE = 1,
-} ValueMode;
-
-class MsgHeader {
-    public :
-    Option<uint32_t> dst;
-    Option<uint32_t> src;
-    uint32_t msg_type;
-    Option<uint32_t> msg_id;
-
-   public:
-    Result<Void> encode(FrameEncoder& encoder) {
-        if (dst.is_some()) {
-            RET_ERR(encoder.encode_uint32(dst.unwrap()));
-        } else {
-            RET_ERR(encoder.encode_null());
-        }
-        if (src.is_some()) {
-            RET_ERR(encoder.encode_uint32(src.unwrap()));
-        } else {
-            RET_ERR(encoder.encode_null());
-        }
-        RET_ERR(encoder.encode_uint32(msg_type));
-        if (msg_id.is_some()) {
-            RET_ERR(encoder.encode_uint32(msg_id.unwrap()));
-        } else {
-            RET_ERR(encoder.encode_null());
-        }
-        return Result<Void>::Ok(Void());
-    }
-};
+#endif

@@ -164,6 +164,13 @@ Result<Void> FrameEncoder::encode_int32(int32_t value)
     return Result<Void>::Ok({});
 }
 
+Result<Void> FrameEncoder::add_map(int8_t key, int32_t value)
+{
+    RET_ERR(encode_int32(key));     
+    RET_ERR(encode_int32(value));     
+    return Result<Void>::Ok({});
+}
+
 Result<Void> FrameEncoder::encode_uint32(uint32_t value)
 {
     if (value <= 23)

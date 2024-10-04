@@ -7,7 +7,9 @@ extern "C" {
 }
 #include <driver/gpio.h>
 #include <esp_timer.h>
+#include <msg.h>
 #include "esp_gtw.h"
+#include "ps4.h"
 // Custom "instance"
 
 EspGtw esp_gtw;
@@ -44,28 +46,45 @@ void led_toggle() {
 }
 
 struct PropDescriptor {
-    uint16_t id;
+    Ps4 id;
     const char* name;
     const char* description;
     uint8_t ValueType;
     uint8_t ValueMode;
-} props[] = {{0, "dpad", "Dpad", ValueType::UINT, ValueMode::READ},
-             {1, "axis_x", "Left Stick X", ValueType::INT, ValueMode::READ},
-             {2, "axis_y", "Left Stick Y", ValueType::INT, ValueMode::READ},
-             {3, "axis_rx", "Right Stick X", ValueType::INT, ValueMode::READ},
-             {4, "axis_ry", "Right Stick Y", ValueType::INT, ValueMode::READ},
-             {5, "buttons", "Buttons", ValueType::UINT, ValueMode::READ},
-             {6, "misc_buttons", "Misc Buttons", ValueType::UINT, ValueMode::READ},
-             {7, "gyro_x", "Gyro X axis", ValueType::INT, ValueMode::READ},
-             {8, "gyro_y", "Gyro Y axis", ValueType::INT, ValueMode::READ},
-             {9, "gyro_z", "Gyro Z axis", ValueType::INT, ValueMode::READ},
-             {10, "accel_x", "Accelerometer X Axis ", ValueType::INT, ValueMode::READ},
-             {11, "accel_y", "Accelerometer Y Axis ", ValueType::INT, ValueMode::READ},
-             {12, "accel_z", "Accelerometer Z Axis ", ValueType::INT, ValueMode::READ},
-             {13, "rumble", "Rumble the controller", ValueType::UINT, ValueMode::WRITE},
-             {14, "led_green", "Green led on controller", ValueType::UINT, ValueMode::WRITE},
-             {15, "led_red", "Red led on controller", ValueType::UINT, ValueMode::WRITE},
-             {16, "led_blue", "Blue led on controller", ValueType::UINT, ValueMode::WRITE}};
+} props[] = {
+    {Ps4::DPAD, "dpad_left", "Dpad", ValueType::UINT, ValueMode::READ},
+
+    {Ps4::BUTTON_SQUARE, "button_square", "Square button", ValueType::UINT, ValueMode::READ},
+    {Ps4::BUTTON_CROSS, "button_cross", "Cross button", ValueType::UINT, ValueMode::READ},
+    {Ps4::BUTTON_CIRCLE, "button_circle", "Circle button", ValueType::UINT, ValueMode::READ},
+    {Ps4::BUTTON_TRIANGLE, "button_triangle", "Triangle button", ValueType::UINT, ValueMode::READ},
+
+    {Ps4::BUTTON_LEFT_SHOULDER, "button_left_shoulder", "Left Shoulder button", ValueType::UINT, ValueMode::READ},
+    {Ps4::BUTTON_RIGHT_SHOULDER, "button_right_shoulder", "Right Shoulder button", ValueType::UINT, ValueMode::READ},
+    {Ps4::BUTTON_LEFT_TRIGGER, "button_left_trigger", "Left Trigger button", ValueType::UINT, ValueMode::READ},
+    {Ps4::BUTTON_RIGHT_TRIGGER, "button_right_trigger", "Right Trigger button", ValueType::UINT, ValueMode::READ},
+    {Ps4::BUTTON_LEFT_JOYSTICK, "button_left_joystick", "Left Joystick button", ValueType::UINT, ValueMode::READ},
+    {Ps4::BUTTON_RIGHT_JOYSTICK, "button_right_joystick", "Right Joystick button", ValueType::UINT, ValueMode::READ},
+    {Ps4::BUTTON_SHARE, "button_share", "Share button", ValueType::UINT, ValueMode::READ},
+
+    {Ps4::STICK_LEFT_X, "axis_x", "Left Stick X", ValueType::INT, ValueMode::READ},
+    {Ps4::STICK_LEFT_Y, "axis_y", "Left Stick Y", ValueType::INT, ValueMode::READ},
+    {Ps4::STICK_RIGHT_X, "axis_rx", "Right Stick X", ValueType::INT, ValueMode::READ},
+    {Ps4::STICK_RIGHT_Y, "axis_ry", "Right Stick Y", ValueType::INT, ValueMode::READ},
+
+    {Ps4::GYRO_X, "gyro_x", "Gyro X axis", ValueType::INT, ValueMode::READ},
+    {Ps4::GYRO_Y, "gyro_y", "Gyro Y axis", ValueType::INT, ValueMode::READ},
+    {Ps4::GYRO_Z, "gyro_z", "Gyro Z axis", ValueType::INT, ValueMode::READ},
+
+    {Ps4::ACCEL_X, "accel_x", "Accelerometer X Axis ", ValueType::INT, ValueMode::READ},
+    {Ps4::ACCEL_Y, "accel_y", "Accelerometer Y Axis ", ValueType::INT, ValueMode::READ},
+    {Ps4::ACCEL_Z, "accel_z", "Accelerometer Z Axis ", ValueType::INT, ValueMode::READ},
+
+    {Ps4::RUMBLE, "rumble", "Rumble", ValueType::UINT, ValueMode::WRITE},
+    {Ps4::LED_GREEN, "led_green", "Green LED", ValueType::UINT, ValueMode::WRITE},
+    {Ps4::LED_RED, "led_red", "Red LED", ValueType::UINT, ValueMode::WRITE},
+    {Ps4::LED_BLUE, "led_blue", "Blue LED", ValueType::UINT, ValueMode::WRITE},
+};
 
 std::vector<uint8_t> desc_message() {
     std::vector<uint8_t> data;
@@ -73,7 +92,7 @@ std::vector<uint8_t> desc_message() {
     frame_encoder.encode_array();
     struct MsgHeader desc_msg_header = {.dst = Option<uint32_t>::None(),
                                         .src = Option<uint32_t>::Some(FNV("ps4")),
-                                        .msg_type = MsgType::Desc,
+                                        .msg_type = MsgType::Info,
                                         .msg_id = Option<uint32_t>::None()};
     desc_msg_header.encode(frame_encoder);
     frame_encoder.encode_array();
@@ -88,7 +107,7 @@ std::vector<uint8_t> desc_message() {
 
 MsgHeader desc_msg_header = {.dst = Option<uint32_t>::None(),
                              .src = Option<uint32_t>::Some(FNV("ps4")),
-                             .msg_type = MsgType::Desc,
+                             .msg_type = MsgType::Info,
                              .msg_id = Option<uint32_t>::None()};
 
 void send_event(Ps4Event event, uni_gamepad_t* gp) {
@@ -115,41 +134,69 @@ void send_event(Ps4Event event, uni_gamepad_t* gp) {
 
     header.encode(frame_encoder);
 
-    frame_encoder.encode_array();
-    frame_encoder.encode_uint32(event);
     if (event == Ps4Event::Data && gp != NULL) {
-        frame_encoder.encode_uint32(gp->dpad);
-        frame_encoder.encode_int32(gp->axis_x);
-        frame_encoder.encode_int32(gp->axis_y);
-        frame_encoder.encode_int32(gp->axis_rx);
-        frame_encoder.encode_int32(gp->axis_ry);
-        frame_encoder.encode_uint32(gp->buttons);
-        frame_encoder.encode_uint32(gp->misc_buttons);
-        frame_encoder.encode_int32(gp->gyro[0]);
-        frame_encoder.encode_int32(gp->gyro[1]);
-        frame_encoder.encode_int32(gp->gyro[2]);
-        frame_encoder.encode_int32(gp->accel[0]);
-        frame_encoder.encode_int32(gp->accel[1]);
-        frame_encoder.encode_int32(gp->accel[2]);
+        frame_encoder.encode_map();
+        frame_encoder.add_map(Ps4::DPAD, gp->dpad & 0x1);
+
+        frame_encoder.add_map(Ps4::BUTTON_SQUARE, gp->buttons & 0x1);
+        frame_encoder.add_map(Ps4::BUTTON_CROSS, gp->buttons & 0x2);
+        frame_encoder.add_map(Ps4::BUTTON_CIRCLE, gp->buttons & 0x4);
+        frame_encoder.add_map(Ps4::BUTTON_TRIANGLE, gp->buttons & 0x8);
+
+        frame_encoder.add_map(Ps4::BUTTON_LEFT_SHOULDER, gp->misc_buttons & 0x1);
+        frame_encoder.add_map(Ps4::BUTTON_RIGHT_SHOULDER, gp->misc_buttons & 0x2);
+        frame_encoder.add_map(Ps4::BUTTON_LEFT_TRIGGER, gp->misc_buttons & 0x4);
+        frame_encoder.add_map(Ps4::BUTTON_RIGHT_TRIGGER, gp->misc_buttons & 0x8);
+
+        frame_encoder.add_map(Ps4::BUTTON_LEFT_JOYSTICK, gp->buttons & 0x100);
+        frame_encoder.add_map(Ps4::BUTTON_RIGHT_JOYSTICK, gp->buttons & 0x200);
+        frame_encoder.add_map(Ps4::BUTTON_SHARE, gp->buttons & 0x400);
+
+        frame_encoder.add_map(Ps4::STICK_LEFT_X, gp->axis_x >> 2);
+        frame_encoder.add_map(Ps4::STICK_LEFT_Y, gp->axis_y >> 2);
+        frame_encoder.add_map(Ps4::STICK_RIGHT_X, gp->axis_rx >> 2);
+        frame_encoder.add_map(Ps4::STICK_RIGHT_Y, gp->axis_ry >> 2);
+
+        frame_encoder.add_map(Ps4::GYRO_X, gp->gyro[0]);
+        frame_encoder.add_map(Ps4::GYRO_Y, gp->gyro[1]);
+        frame_encoder.add_map(Ps4::GYRO_Z, gp->gyro[2]);
+
+        frame_encoder.add_map(Ps4::ACCEL_X, gp->accel[0]);
+        frame_encoder.add_map(Ps4::ACCEL_Y, gp->accel[1]);
+        frame_encoder.add_map(Ps4::ACCEL_Z, gp->accel[2]);
+        frame_encoder.encode_end();
     }
     frame_encoder.encode_end();
-    frame_encoder.encode_end();
     frame_encoder.read_buffer(data);
+    // send props
     esp_gtw.send(data.data(), data.size());
+
     if (send_counter++ % 10 == 0) {
+        // send object description
         esp_gtw.send(desc_message().data(), desc_message().size());
         static int prop_counter = 0;
         if (prop_counter < sizeof(props) / sizeof(PropDescriptor)) {
             frame_encoder.clear();
             frame_encoder.encode_array();
             desc_msg_header.encode(frame_encoder);
-            frame_encoder.encode_array();
-            frame_encoder.encode_uint32(props[prop_counter].id);
-            frame_encoder.encode_str(props[prop_counter].name);
-            frame_encoder.encode_str(props[prop_counter].description);
-            frame_encoder.encode_uint32(props[prop_counter].ValueType);
-            frame_encoder.encode_uint32(props[prop_counter].ValueMode);
-            frame_encoder.encode_end();
+            {
+                frame_encoder.encode_map();
+                frame_encoder.encode_int32(InfoPropertyId::PROP_ID);
+                frame_encoder.encode_uint32(props[prop_counter].id);
+
+                frame_encoder.encode_int32(InfoPropertyId::NAME);
+                frame_encoder.encode_str(props[prop_counter].name);
+
+                frame_encoder.encode_int32(InfoPropertyId::DESCRIPTION);
+                frame_encoder.encode_str(props[prop_counter].description);
+
+                frame_encoder.encode_int32(InfoPropertyId::TYPE);  // ValueType
+                frame_encoder.encode_uint32(props[prop_counter].ValueType);
+
+                frame_encoder.encode_int32(InfoPropertyId::MODE);  // ValueMode
+                frame_encoder.encode_uint32(props[prop_counter].ValueMode);
+                frame_encoder.encode_end();
+            };
             frame_encoder.encode_end();
             frame_encoder.read_buffer(data);
             esp_gtw.send(data.data(), data.size());
