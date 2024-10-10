@@ -1,4 +1,5 @@
-typedef enum Ps4{
+#include <stdint.h>
+typedef enum Ps4 : int8_t{ 
     DPAD,
 
     BUTTON_SQUARE,

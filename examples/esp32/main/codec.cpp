@@ -255,19 +255,25 @@ Result<Void> FrameEncoder::encode_float(float value)
     return Result<Void>::Ok(Void());
 }
 
-Result<Void> FrameEncoder::encode_array()
+Result<Void> FrameEncoder::begin_array()
 {
     RET_ERR(write_byte(0x9F)); // Array of indefinite length
     return Result<Void>::Ok(Void());
 }
 
-Result<Void> FrameEncoder::encode_map()
+Result<Void> FrameEncoder::begin_map()
 {
     RET_ERR(write_byte(0xBF)); // Map of indefinite length
     return Result<Void>::Ok(Void());
 }
 
-Result<Void> FrameEncoder::encode_end()
+Result<Void> FrameEncoder::end_map()
+{
+    RET_ERR(write_byte(0xFF)); // CBOR "break" byte
+    return Result<Void>::Ok(Void());
+}
+
+Result<Void> FrameEncoder::end_array()
 {
     RET_ERR(write_byte(0xFF)); // CBOR "break" byte
     return Result<Void>::Ok(Void());
@@ -427,7 +433,7 @@ Result<CborType> FrameDecoder::peek_type()
     return Result<CborType>::Err(EINVAL, "Unknown CBOR type");
 }
 
-Result<Void> FrameDecoder::decode_array()
+Result<Void> FrameDecoder::begin_array()
 {
     auto r = peek_next();
     if (r.is_err())
@@ -443,7 +449,7 @@ Result<Void> FrameDecoder::decode_array()
     return Result<Void>::Ok(Void());
 }
 
-Result<Void> FrameDecoder::decode_map()
+Result<Void> FrameDecoder::begin_map()
 {
     auto r = peek_next();
     if (r.is_err())
@@ -458,7 +464,7 @@ Result<Void> FrameDecoder::decode_map()
     return Result<Void>::Ok(Void());
 }
 
-Result<Void> FrameDecoder::decode_end()
+Result<Void> FrameDecoder::end_map()
 {
     auto r = peek_next();
     if (r.is_err())

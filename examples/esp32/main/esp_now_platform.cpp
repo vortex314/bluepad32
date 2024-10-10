@@ -89,18 +89,27 @@ struct PropDescriptor {
 std::vector<uint8_t> desc_message() {
     std::vector<uint8_t> data;
     frame_encoder.clear();
-    frame_encoder.encode_array();
+
+    frame_encoder.begin_array();
     struct MsgHeader desc_msg_header = {.dst = Option<uint32_t>::None(),
                                         .src = Option<uint32_t>::Some(FNV("ps4")),
                                         .msg_type = MsgType::Info,
-                                        .msg_id = Option<uint32_t>::None()};
+                                        .ret_code = Option<uint32_t>::None(),
+                                        .msg_id = Option<uint16_t>::None(),
+                                        .qos = Option<uint8_t>::None()};
+
     desc_msg_header.encode(frame_encoder);
-    frame_encoder.encode_array();
-    frame_encoder.encode_null();                 // id prop
-    frame_encoder.encode_str("ps4");             // name
-    frame_encoder.encode_str("PS4 Controller");  // description
-    frame_encoder.encode_end();
-    frame_encoder.encode_end();
+    frame_encoder.end_array();
+
+    {
+        frame_encoder.begin_map();
+        frame_encoder.add_map(InfoPropertyId::PROP_ID, -1);
+        frame_encoder.encode_int32(InfoPropertyId::NAME);
+        frame_encoder.encode_str("ps4");  // name
+        frame_encoder.encode_int32(InfoPropertyId::DESCRIPTION);
+        frame_encoder.encode_str("PS4 Controller");  // description
+        frame_encoder.end_map();
+    }
     frame_encoder.read_buffer(data);
     return data;
 }
@@ -108,7 +117,9 @@ std::vector<uint8_t> desc_message() {
 MsgHeader desc_msg_header = {.dst = Option<uint32_t>::None(),
                              .src = Option<uint32_t>::Some(FNV("ps4")),
                              .msg_type = MsgType::Info,
-                             .msg_id = Option<uint32_t>::None()};
+                             .ret_code = Option<uint32_t>::None(),
+                             .msg_id = Option<uint16_t>::None(),
+                             .qos = Option<uint8_t>::None()};
 
 void send_event(Ps4Event event, uni_gamepad_t* gp) {
     std::vector<uint8_t> data;
@@ -124,33 +135,36 @@ void send_event(Ps4Event event, uni_gamepad_t* gp) {
         memcpy(&prev_gamepad, gp, sizeof(uni_gamepad_t));
     led_toggle();
 
-    MsgHeader header = {.dst = Option<uint32_t>::None(),
-                        .src = Option<uint32_t>::Some(FNV("ps4")),
-                        .msg_type = MsgType::Pub,
-                        .msg_id = Option<uint32_t>::None()};
+    MsgHeader header = {
+        .dst = Option<uint32_t>::None(), 
+        .src = Option<uint32_t>::Some(FNV("ps4")), 
+        .msg_type = MsgType::Pub,
+        .ret_code = Option<uint32_t>::None(),
+        .msg_id = Option<uint16_t>::None(),
+        .qos = Option<uint8_t>::None(),};
 
     frame_encoder.clear();
-    frame_encoder.encode_array();
-
+    frame_encoder.begin_array();
     header.encode(frame_encoder);
+    frame_encoder.end_array();
 
     if (event == Ps4Event::Data && gp != NULL) {
-        frame_encoder.encode_map();
-        frame_encoder.add_map(Ps4::DPAD, gp->dpad & 0x1);
+        frame_encoder.begin_map();
+        frame_encoder.add_map(Ps4::DPAD, gp->dpad);
 
-        frame_encoder.add_map(Ps4::BUTTON_SQUARE, gp->buttons & 0x1);
-        frame_encoder.add_map(Ps4::BUTTON_CROSS, gp->buttons & 0x2);
-        frame_encoder.add_map(Ps4::BUTTON_CIRCLE, gp->buttons & 0x4);
-        frame_encoder.add_map(Ps4::BUTTON_TRIANGLE, gp->buttons & 0x8);
+        frame_encoder.add_map(Ps4::BUTTON_SQUARE, gp->buttons & 0x4 ? 1 : 0);
+        frame_encoder.add_map(Ps4::BUTTON_CROSS, gp->buttons & 0x1 ? 1 : 0);
+        frame_encoder.add_map(Ps4::BUTTON_CIRCLE, gp->buttons & 0x2 ? 1 : 0);
+        frame_encoder.add_map(Ps4::BUTTON_TRIANGLE, gp->buttons & 0x8 ? 1 : 0);
 
         frame_encoder.add_map(Ps4::BUTTON_LEFT_SHOULDER, gp->misc_buttons & 0x1);
-        frame_encoder.add_map(Ps4::BUTTON_RIGHT_SHOULDER, gp->misc_buttons & 0x2);
-        frame_encoder.add_map(Ps4::BUTTON_LEFT_TRIGGER, gp->misc_buttons & 0x4);
-        frame_encoder.add_map(Ps4::BUTTON_RIGHT_TRIGGER, gp->misc_buttons & 0x8);
+        frame_encoder.add_map(Ps4::BUTTON_RIGHT_SHOULDER, gp->misc_buttons & 0x2 ? 1 : 0);
+        frame_encoder.add_map(Ps4::BUTTON_LEFT_TRIGGER, gp->misc_buttons & 0x4 ? 1 : 0);
+        frame_encoder.add_map(Ps4::BUTTON_RIGHT_TRIGGER, gp->misc_buttons & 0x8 ? 1 : 0);
 
-        frame_encoder.add_map(Ps4::BUTTON_LEFT_JOYSTICK, gp->buttons & 0x100);
-        frame_encoder.add_map(Ps4::BUTTON_RIGHT_JOYSTICK, gp->buttons & 0x200);
-        frame_encoder.add_map(Ps4::BUTTON_SHARE, gp->buttons & 0x400);
+        frame_encoder.add_map(Ps4::BUTTON_LEFT_JOYSTICK, gp->buttons & 0x100 ? 1 : 0);
+        frame_encoder.add_map(Ps4::BUTTON_RIGHT_JOYSTICK, gp->buttons & 0x200 ? 1 : 0);
+        frame_encoder.add_map(Ps4::BUTTON_SHARE, gp->buttons & 0x400 ? 1 : 0);
 
         frame_encoder.add_map(Ps4::STICK_LEFT_X, gp->axis_x >> 2);
         frame_encoder.add_map(Ps4::STICK_LEFT_Y, gp->axis_y >> 2);
@@ -164,9 +178,8 @@ void send_event(Ps4Event event, uni_gamepad_t* gp) {
         frame_encoder.add_map(Ps4::ACCEL_X, gp->accel[0]);
         frame_encoder.add_map(Ps4::ACCEL_Y, gp->accel[1]);
         frame_encoder.add_map(Ps4::ACCEL_Z, gp->accel[2]);
-        frame_encoder.encode_end();
+        frame_encoder.end_map();
     }
-    frame_encoder.encode_end();
     frame_encoder.read_buffer(data);
     // send props
     esp_gtw.send(data.data(), data.size());
@@ -177,10 +190,13 @@ void send_event(Ps4Event event, uni_gamepad_t* gp) {
         static int prop_counter = 0;
         if (prop_counter < sizeof(props) / sizeof(PropDescriptor)) {
             frame_encoder.clear();
-            frame_encoder.encode_array();
+
+            frame_encoder.begin_array();
             desc_msg_header.encode(frame_encoder);
+            frame_encoder.end_array();
+
             {
-                frame_encoder.encode_map();
+                frame_encoder.begin_map();
                 frame_encoder.encode_int32(InfoPropertyId::PROP_ID);
                 frame_encoder.encode_uint32(props[prop_counter].id);
 
@@ -195,9 +211,8 @@ void send_event(Ps4Event event, uni_gamepad_t* gp) {
 
                 frame_encoder.encode_int32(InfoPropertyId::MODE);  // ValueMode
                 frame_encoder.encode_uint32(props[prop_counter].ValueMode);
-                frame_encoder.encode_end();
+                frame_encoder.end_map();
             };
-            frame_encoder.encode_end();
             frame_encoder.read_buffer(data);
             esp_gtw.send(data.data(), data.size());
             prop_counter++;
@@ -282,7 +297,7 @@ extern "C" uni_error_t my_platform_on_device_discovered(bd_addr_t addr, const ch
 
 extern "C" void my_platform_on_device_connected(uni_hid_device_t* d) {
     logi("custom: device connected: %p\n", d);
-    send_event(Ps4Event::Connected, NULL);
+    //  send_event(Ps4Event::Connected, NULL);
 }
 
 extern "C" void my_platform_on_device_disconnected(uni_hid_device_t* d) {

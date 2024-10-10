@@ -32,6 +32,11 @@ class Option {
     bool is_some() { return !_none; }
     bool is_none() { return _none; }
     T unwrap() { return _value; }
+    void inspect(std::function<void(T)> ff) {
+        if (_none == false) {
+            ff(_value);
+        }
+    }
 };
 
 template <typename T>
@@ -83,11 +88,20 @@ class Result {
         result._msg = msg;
         return result;
     }
+    void inspect(std::function<void(T)> ff) {
+        if (_err == 0) {
+             ff(_value);
+        }
+    }
 };
 
-#define RET_ERR(x)    \
-    if (x.is_err()) { \
-        return x;     \
+#define RET_ERR(x)      \
+    if ((x).is_err()) { \
+        return x;       \
+    }
+#define RET_ER(x)      \
+    if ((x).is_err()) { \
+        return;      \
     }
 
 class FrameEncoder {
@@ -98,10 +112,11 @@ class FrameEncoder {
 
    public:
     FrameEncoder(uint32_t max);
-    Result<Void> encode_array();
-    Result<Void> encode_map();
-    Result<Void> encode_end();
-    Result<Void> add_map(int8_t key,int32_t value);
+    Result<Void> begin_array();
+    Result<Void> begin_map();
+    Result<Void> end_array();
+    Result<Void> end_map();
+    Result<Void> add_map(int8_t key, int32_t value);
     Result<Void> encode_uint32(uint32_t input_value);
     Result<Void> encode_str(const char* str);
     Result<Void> encode_bstr(std::vector<uint8_t>& buffer);
@@ -131,15 +146,16 @@ class FrameDecoder {
     std::vector<uint8_t> _buffer;
     uint32_t _index;
     uint32_t _max;
-    Result<uint8_t> read_next();
-    Result<uint8_t> peek_next();
-    Result<CborType> peek_type();
 
    public:
     FrameDecoder(uint32_t max);
-    Result<Void> decode_array();
-    Result<Void> decode_map();
-    Result<Void> decode_end();
+    Result<uint8_t> read_next();
+    Result<uint8_t> peek_next();
+    Result<CborType> peek_type();
+    Result<Void> begin_array();
+    Result<Void> begin_map();
+    Result<Void> end_map();
+    Result<Void> end_array();
     Result<uint32_t> decode_uint32();
     Result<std::string> decode_str();
     Result<float> decode_float();
@@ -157,15 +173,14 @@ class FrameDecoder {
     Result<std::string> to_string();
 };
 
-
 // FNV-1a hash function for 32-bit hash value
 constexpr uint32_t fnv1a_32_1(const char* str, uint32_t hash = 2166136261U) {
     return *str == '\0' ? hash : fnv1a_32_1(str + 1, (hash ^ static_cast<uint32_t>(*str)) * 16777619U);
 }
 
 // Helper to compute the hash at compile time for a string literal
-template<std::size_t N>
-constexpr uint32_t FNV(const char(&str)[N]) {
+template <std::size_t N>
+constexpr uint32_t FNV(const char (&str)[N]) {
     return fnv1a_32_1(str);
 }
 #endif

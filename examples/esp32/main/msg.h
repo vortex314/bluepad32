@@ -5,21 +5,22 @@
 
 typedef int8_t PropertyId;
 
-typedef enum MetaPropertyId : PropertyId {
-    RET_CODE = -2,
-} PredefinedPropertyId;
+typedef enum HeaderId { DST = 0, SRC, MSG_TYPE, RET_CODE, MSG_ID, QOS } HeaderId;
 
 typedef enum InfoPropertyId : PropertyId {
     PROP_ID = 0,
-    NAME ,
-    DESCRIPTION ,
-    TYPE ,
-    MODE ,
+    NAME,
+    DESCRIPTION,
+    TYPE,
+    MODE,
 } InfoPropertyId;
 
 typedef enum MsgType {
-    Pub = 1,   // from = PubSUb, to = Set
-    Info = 2,  // contain name, description, type, etc
+    Alive = 0,  // keep alive
+    Pub = 1,    // publish data if dst=None => broadcast
+                // if dst=Some  => send to one as Set
+    Sub = 2,    // Subscribe to data , send to src as Endpoint
+    Info = 3,   // contain name, description, type, etc
 } MsgType;
 
 typedef enum ValueType {
@@ -39,26 +40,112 @@ class MsgHeader {
    public:
     Option<uint32_t> dst;
     Option<uint32_t> src;
-    uint32_t msg_type;
-    Option<uint32_t> msg_id;
+    MsgType msg_type;
+    Option<uint32_t> ret_code;
+    Option<uint16_t> msg_id;
+    Option<uint8_t> qos;
 
    public:
+    /*MsgHeader()
+        : dst(Option<uint32_t>::None()),
+          src(Option<uint32_t>::None()),
+          msg_type(MsgType::Alive),
+          ret_code(Option<uint32_t>::None()),
+          msg_id(Option<uint16_t>::None()),
+          qos(Option<uint8_t>::None()) {};*/
+
     Result<Void> encode(FrameEncoder& encoder) {
-        if (dst.is_some()) {
-            RET_ERR(encoder.encode_uint32(dst.unwrap()));
-        } else {
-            RET_ERR(encoder.encode_null());
-        }
-        if (src.is_some()) {
-            RET_ERR(encoder.encode_uint32(src.unwrap()));
-        } else {
-            RET_ERR(encoder.encode_null());
-        }
+        RET_ERR(encoder.begin_map());
+        dst.inspect([&](uint32_t value) {
+            RET_ER(encoder.encode_uint32(HeaderId::DST));
+            RET_ER(encoder.encode_uint32(value));
+        });
+        src.inspect([&](uint32_t value) {
+            RET_ER(encoder.encode_uint32(HeaderId::SRC));
+            RET_ER(encoder.encode_uint32(value));
+        });
+        RET_ERR(encoder.encode_uint32(HeaderId::MSG_TYPE));
         RET_ERR(encoder.encode_uint32(msg_type));
-        if (msg_id.is_some()) {
-            RET_ERR(encoder.encode_uint32(msg_id.unwrap()));
-        } else {
-            RET_ERR(encoder.encode_null());
+        ret_code.inspect([&](uint32_t value) {
+            RET_ER(encoder.encode_uint32(HeaderId::RET_CODE));
+            RET_ER(encoder.encode_uint32(value));
+        });
+        msg_id.inspect([&](uint16_t value) {
+            RET_ER(encoder.encode_uint32(HeaderId::MSG_ID));
+            RET_ER(encoder.encode_uint32(value));
+        });
+        qos.inspect([&](uint8_t value) {
+            RET_ER(encoder.encode_uint32(HeaderId::QOS));
+            RET_ER(encoder.encode_uint32(value));
+        });
+        RET_ERR(encoder.end_map());
+        return Result<Void>::Ok(Void());
+    }
+
+    Result<Void> decode(FrameDecoder& decoder) {
+        bool found_mandatory_msg_type = false;
+        MsgHeader header{
+            .dst = Option<uint32_t>::None(),
+            .src = Option<uint32_t>::None(),
+            .msg_type = MsgType::Alive,
+            .ret_code = Option<uint32_t>::None(),
+            .msg_id = Option<uint16_t>::None(),
+            .qos = Option<uint8_t>::None(),
+        } ;
+        RET_ERR(decoder.begin_map());
+        while (true)  {
+            if ( decoder.peek_next().unwrap() == 0xFF) {
+                break;
+            }
+            uint32_t key = 0;
+            decoder.decode_uint32().inspect([&](uint32_t value) {
+                key = value;
+            });
+            switch (key) {
+                case HeaderId::DST: {
+                    decoder.decode_uint32().inspect([&](uint32_t value) {
+                        header.dst = Option<uint32_t>::Some(value);
+                    });
+                    break;
+                }
+                case HeaderId::SRC: {
+                    decoder.decode_uint32().inspect([&](uint32_t value) {
+                        header.src = Option<uint32_t>::Some(value);
+                    });
+                    break;
+                }
+                case HeaderId::MSG_TYPE: {
+                    decoder.decode_uint32().inspect([&](uint32_t value) {
+                        header.msg_type = (MsgType)value;
+                        found_mandatory_msg_type = true;
+                    });
+                    break;
+                }
+                case HeaderId::RET_CODE: {
+                    decoder.decode_uint32().inspect([&](uint32_t value) {
+                        header.ret_code = Option<uint32_t>::Some(value);
+                    });
+                    break;
+                }
+                case HeaderId::MSG_ID: {
+                    decoder.decode_uint32().inspect([&](uint32_t value) {
+                        header.msg_id = Option<uint16_t>::Some(value);
+                    });
+                    break;
+                }
+                case HeaderId::QOS: {
+                    decoder.decode_uint32().inspect([&](uint32_t value) {
+                        header.qos = Option<uint8_t>::Some(value);
+                    });
+                    break;
+                }
+                default:
+                    return Result<Void>::Err(-1, "Unknown key");
+            }
+        }
+        RET_ERR(decoder.end_map());
+        if (!found_mandatory_msg_type) {
+            return Result<Void>::Err(-1, "Mandatory field MSG_TYPE not found");
         }
         return Result<Void>::Ok(Void());
     }
