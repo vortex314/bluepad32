@@ -150,4 +150,35 @@ class MsgHeader {
         return Result<Void>::Ok(Void());
     }
 };
+
+struct InfoMsg {
+    public :
+    PropertyId prop_id;
+    std::string name;
+    Option<std::string> description;
+    Option<ValueType> type;
+    Option<ValueMode> mode;
+
+    Result<Void> encode(FrameEncoder& encoder) {
+        RET_ERR(encoder.begin_map());
+        RET_ERR(encoder.encode_int32(InfoPropertyId::PROP_ID));
+        RET_ERR(encoder.encode_uint32(prop_id));
+        RET_ERR(encoder.encode_int32(InfoPropertyId::NAME));
+        RET_ERR(encoder.encode_str(name));
+        description.inspect([&](std::string value) {
+            RET_ER(encoder.encode_int32(InfoPropertyId::DESCRIPTION));
+            RET_ER(encoder.encode_str(value));
+        });
+        type.inspect([&](ValueType value) {
+            RET_ER(encoder.encode_int32(InfoPropertyId::TYPE));
+            RET_ER(encoder.encode_uint32(value));
+        });
+        mode.inspect([&](ValueMode value) {
+            RET_ER(encoder.encode_int32(InfoPropertyId::MODE));
+            RET_ER(encoder.encode_uint32(value));
+        });
+        RET_ERR(encoder.end_map());
+        return Result<Void>::Ok(Void());
+    }
+}
 #endif

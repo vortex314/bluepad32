@@ -15,7 +15,9 @@ extern "C" {
 EspGtw esp_gtw;
 FrameEncoder frame_encoder(200);
 FrameDecoder frame_decoder(200);
-typedef enum Ps4Event { Connected = 0, Disconnected, Data, OOB } Ps4Event;
+uni_hid_device_t* hid_device = NULL;
+uint8_t lightbar_red, lightbar_green, lightbar_blue;
+
 uint32_t send_counter = 0;
 
 bool gamepad_equal(uni_gamepad_t* gp1, uni_gamepad_t* gp2) {
@@ -45,7 +47,7 @@ void led_toggle() {
     gpio_set_level(GPIO_LED, led_state);
 }
 
-struct PropDescriptor {
+const struct PropDescriptor {
     Ps4 id;
     const char* name;
     const char* description;
@@ -86,67 +88,82 @@ struct PropDescriptor {
     {Ps4::LED_BLUE, "led_blue", "Blue LED", ValueType::UINT, ValueMode::WRITE},
 };
 
-std::vector<uint8_t> desc_message() {
-    std::vector<uint8_t> data;
+const struct MsgHeader desc_msg_header = {.dst = Option<uint32_t>::None(),
+                                          .src = Option<uint32_t>::Some(FNV("ps4")),
+                                          .msg_type = MsgType::Info,
+                                          .ret_code = Option<uint32_t>::None(),
+                                          .msg_id = Option<uint16_t>::None(),
+                                          .qos = Option<uint8_t>::None()};
+
+void send_obj_desc() {
     frame_encoder.clear();
 
-    frame_encoder.begin_array();
-    struct MsgHeader desc_msg_header = {.dst = Option<uint32_t>::None(),
-                                        .src = Option<uint32_t>::Some(FNV("ps4")),
-                                        .msg_type = MsgType::Info,
-                                        .ret_code = Option<uint32_t>::None(),
-                                        .msg_id = Option<uint16_t>::None(),
-                                        .qos = Option<uint8_t>::None()};
-
+    frame_encoder.begin_map();
     desc_msg_header.encode(frame_encoder);
-    frame_encoder.end_array();
+    frame_encoder.end_map();
 
-    {
-        frame_encoder.begin_map();
-        frame_encoder.add_map(InfoPropertyId::PROP_ID, -1);
-        frame_encoder.encode_int32(InfoPropertyId::NAME);
-        frame_encoder.encode_str("ps4");  // name
-        frame_encoder.encode_int32(InfoPropertyId::DESCRIPTION);
-        frame_encoder.encode_str("PS4 Controller");  // description
-        frame_encoder.end_map();
-    }
-    frame_encoder.read_buffer(data);
-    return data;
+    frame_encoder.begin_map();
+    frame_encoder.add_map(InfoPropertyId::PROP_ID, -1);
+    frame_encoder.encode_int32(InfoPropertyId::NAME);
+    frame_encoder.encode_str("ps4");  // name
+    frame_encoder.encode_int32(InfoPropertyId::DESCRIPTION);
+    frame_encoder.encode_str("PS4 Controller");  // description
+    frame_encoder.end_map();
+
+    esp_gtw.send(frame_encoder.data(), frame_encoder.size());
 }
 
-MsgHeader desc_msg_header = {.dst = Option<uint32_t>::None(),
-                             .src = Option<uint32_t>::Some(FNV("ps4")),
-                             .msg_type = MsgType::Info,
-                             .ret_code = Option<uint32_t>::None(),
-                             .msg_id = Option<uint16_t>::None(),
-                             .qos = Option<uint8_t>::None()};
+void send_prop_desc(uint32_t idx) {
+    frame_encoder.clear();
+
+    frame_encoder.begin_map();
+    desc_msg_header.encode(frame_encoder);
+    frame_encoder.end_map();
+
+    frame_encoder.begin_map();
+    frame_encoder.encode_int32(InfoPropertyId::PROP_ID);
+    frame_encoder.encode_uint32(props[prop_counter].id);
+    frame_encoder.encode_int32(InfoPropertyId::NAME);
+    frame_encoder.encode_str(props[prop_counter].name);
+    frame_encoder.encode_int32(InfoPropertyId::DESCRIPTION);
+    frame_encoder.encode_str(props[prop_counter].description);
+    frame_encoder.encode_int32(InfoPropertyId::TYPE);  // ValueType
+    frame_encoder.encode_uint32(props[prop_counter].ValueType);
+    frame_encoder.encode_int32(InfoPropertyId::MODE);  // ValueMode
+    frame_encoder.encode_uint32(props[prop_counter].ValueMode);
+    frame_encoder.end_map();
+
+    esp_gtw.send(frame_encoder.data(), frame_encoder.size());
+}
+
+const MsgHeader pub_header = {
+    .dst = Option<uint32_t>::None(),
+    .src = Option<uint32_t>::Some(FNV("ps4")),
+    .msg_type = MsgType::Pub,
+    .ret_code = Option<uint32_t>::None(),
+    .msg_id = Option<uint16_t>::None(),
+    .qos = Option<uint8_t>::None(),
+};
 
 void send_event(Ps4Event event, uni_gamepad_t* gp) {
-    std::vector<uint8_t> data;
-    static uni_gamepad_t prev_gamepad;
-    static int64_t prev_send = 0;
-    // -12 to dropy accel and gyro in comparison
-    // send at least every 100 msec
-    if ((event == Ps4Event::Data && gamepad_equal(&prev_gamepad, gp)) && (esp_timer_get_time() - prev_send) < 100000) {
-        return;
+    {
+        static uni_gamepad_t prev_gamepad;
+        static int64_t prev_send = 0;
+        // -12 to dropy accel and gyro in comparison
+        // send at least every 100 msec
+        if ((event == Ps4Event::Data && gamepad_equal(&prev_gamepad, gp)) &&
+            (esp_timer_get_time() - prev_send) < 100000) {
+            return;
+        }
+        prev_send = esp_timer_get_time();
+        if (gp != NULL)
+            memcpy(&prev_gamepad, gp, sizeof(uni_gamepad_t));
+        led_toggle();
     }
-    prev_send = esp_timer_get_time();
-    if (gp != NULL)
-        memcpy(&prev_gamepad, gp, sizeof(uni_gamepad_t));
-    led_toggle();
-
-    MsgHeader header = {
-        .dst = Option<uint32_t>::None(), 
-        .src = Option<uint32_t>::Some(FNV("ps4")), 
-        .msg_type = MsgType::Pub,
-        .ret_code = Option<uint32_t>::None(),
-        .msg_id = Option<uint16_t>::None(),
-        .qos = Option<uint8_t>::None(),};
-
     frame_encoder.clear();
-    frame_encoder.begin_array();
-    header.encode(frame_encoder);
-    frame_encoder.end_array();
+    frame_encoder.begin_map();
+    pub_header.encode(frame_encoder);
+    frame_encoder.end_map();
 
     if (event == Ps4Event::Data && gp != NULL) {
         frame_encoder.begin_map();
@@ -179,44 +196,27 @@ void send_event(Ps4Event event, uni_gamepad_t* gp) {
         frame_encoder.add_map(Ps4::ACCEL_Y, gp->accel[1]);
         frame_encoder.add_map(Ps4::ACCEL_Z, gp->accel[2]);
         frame_encoder.end_map();
-    }
-    frame_encoder.read_buffer(data);
+    } else if (event == Ps4Event::Disconnected) {
+        frame_encoder.begin_map();
+        frame_encoder.encode_int32(Ps4::CONNECTED);
+        frame_encoder.encode_bool(false);
+        frame_encoder.end_map();
+    } else if (event == Ps4Event::Connected) {
+        frame_encoder.begin_map();
+        frame_encoder.encode_int32(Ps4::CONNECTED);
+        frame_encoder.encode_bool(true);
+        frame_encoder.end_map();
+    } else
+        return;
     // send props
-    esp_gtw.send(data.data(), data.size());
+    esp_gtw.send(frame_encoder.data(), frame_encoder.size());
 
     if (send_counter++ % 10 == 0) {
-        // send object description
-        esp_gtw.send(desc_message().data(), desc_message().size());
+        // send object and prop description
+        send_obj_desc();
         static int prop_counter = 0;
-        if (prop_counter < sizeof(props) / sizeof(PropDescriptor)) {
-            frame_encoder.clear();
-
-            frame_encoder.begin_array();
-            desc_msg_header.encode(frame_encoder);
-            frame_encoder.end_array();
-
-            {
-                frame_encoder.begin_map();
-                frame_encoder.encode_int32(InfoPropertyId::PROP_ID);
-                frame_encoder.encode_uint32(props[prop_counter].id);
-
-                frame_encoder.encode_int32(InfoPropertyId::NAME);
-                frame_encoder.encode_str(props[prop_counter].name);
-
-                frame_encoder.encode_int32(InfoPropertyId::DESCRIPTION);
-                frame_encoder.encode_str(props[prop_counter].description);
-
-                frame_encoder.encode_int32(InfoPropertyId::TYPE);  // ValueType
-                frame_encoder.encode_uint32(props[prop_counter].ValueType);
-
-                frame_encoder.encode_int32(InfoPropertyId::MODE);  // ValueMode
-                frame_encoder.encode_uint32(props[prop_counter].ValueMode);
-                frame_encoder.end_map();
-            };
-            frame_encoder.read_buffer(data);
-            esp_gtw.send(data.data(), data.size());
-            prop_counter++;
-        } else {
+        send_prop_desc(prop_counter++);
+        if (prop_counter == sizeof(props) / sizeof(PropDescriptor)) {
             prop_counter = 0;
         }
     }
@@ -240,7 +240,33 @@ extern "C" void my_platform_init(int argc, const char** argv) {
     logi("custom: init()\n");
     esp_gtw.init();
     esp_gtw.set_callback_receive([](const esp_now_recv_info_t* recv_info, const uint8_t* data, int len) {
-        // TODO: Decode the message and handle
+        if (hid_device == NULL) {
+            return;
+        }
+        MsgHeader hdr;
+        frame_decoder.clear();
+        frame_decoder.fill_buffer(data, len);
+        hdr.decode(frame_decoder);
+        if (hdr.dst.is_some() && hdr.dst.unwrap() != FNV("ps4")) {
+            return;
+        }
+        Ps4Map ps4_msg;
+        if (ps4_msg.decode(frame_decoder).is_err()) {
+            return;
+        }
+        ps4_msg.rumble.inspect([&](rumble) {
+            if (hid->device->report_parser.play_dual_rumble != NULL)
+                hid_device->report_parser.play_dual_rumble(hid_device, 0, 250, rumble, rumble);
+        });
+        ps4_msg.lightbar_rgb.inspect([&](led) {
+            if (led_update && hid->device->report_parser.set_lightbar_color != NULL){
+                uint8_t r = (led & 0xff0000) >> 16;
+                uint8_t g = (led & 0x00ff00) >> 8;
+                uint8_t b = (led & 0x0000ff);
+               hid_device->report_parser.set_lightbar_color(hid_device, r,g,b);
+            }
+        });
+        
     });
 
 #if 0
@@ -297,11 +323,13 @@ extern "C" uni_error_t my_platform_on_device_discovered(bd_addr_t addr, const ch
 
 extern "C" void my_platform_on_device_connected(uni_hid_device_t* d) {
     logi("custom: device connected: %p\n", d);
+    hid_device = d;
     //  send_event(Ps4Event::Connected, NULL);
 }
 
 extern "C" void my_platform_on_device_disconnected(uni_hid_device_t* d) {
     logi("custom: device disconnected: %p\n", d);
+    hid_device = NULL;
     send_event(Ps4Event::Disconnected, NULL);
 }
 
@@ -320,6 +348,7 @@ extern "C" void my_platform_on_controller_data(uni_hid_device_t* d, uni_controll
     uint8_t enabled = true;
     uni_gamepad_t* gp;
     std::vector<uint8_t> bytes;
+    hid_device = d;
 
     switch (ctl->klass) {
         case UNI_CONTROLLER_CLASS_GAMEPAD: {

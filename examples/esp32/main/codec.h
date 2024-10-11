@@ -28,6 +28,7 @@ class Option {
         option._value = value;
         return option;
     }
+    Option() : _none(true) {}
     Option(bool none) : _none(none) {}
     bool is_some() { return !_none; }
     bool is_none() { return _none; }
@@ -35,6 +36,14 @@ class Option {
     void inspect(std::function<void(T)> ff) {
         if (_none == false) {
             ff(_value);
+        }
+    }
+    template <typename U>
+    Option<U> map(std::function<Option<U>(T)> ff) {
+        if (_none == false) {
+            return ff(_value);
+        } else {
+            return Option<U>::None();
         }
     }
 };
@@ -90,8 +99,15 @@ class Result {
     }
     void inspect(std::function<void(T)> ff) {
         if (_err == 0) {
-             ff(_value);
+            ff(_value);
         }
+    }
+    template <typename U>
+    Result<U> map(std::function<Result<U>(T)> ff) {
+        if (_none == false) {
+            return ff(_value);
+        }
+        return Result<U>::Err(this->_err, this->_msg);
     }
 };
 
@@ -99,9 +115,9 @@ class Result {
     if ((x).is_err()) { \
         return x;       \
     }
-#define RET_ER(x)      \
+#define RET_ER(x)       \
     if ((x).is_err()) { \
-        return;      \
+        return;         \
     }
 
 class FrameEncoder {
@@ -122,6 +138,7 @@ class FrameEncoder {
     Result<Void> encode_bstr(std::vector<uint8_t>& buffer);
     Result<Void> encode_float(float value);
     Result<Void> encode_int32(int32_t value);
+    Result<Void> encode_bool(bool b);
     Result<Void> encode_null();
     Result<Void> add_crc();
     Result<Void> add_cobs();
@@ -130,6 +147,8 @@ class FrameEncoder {
     Result<Void> clear();
     Result<Void> rewind();
     Result<std::string> to_string();
+    uint8_t* data() { return _buffer.data(); }
+    uint32_t size() { return _buffer.size(); }
 };
 
 enum CborType {

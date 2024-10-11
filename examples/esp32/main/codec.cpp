@@ -217,6 +217,11 @@ Result<Void> FrameEncoder::encode_uint32(uint32_t value)
     return Result<Void>::Ok({});
 }
 
+Result<Void> FrameEncoder::encode_bool(bool b) {
+    RET_ERR(write_byte(b?0xf5:0xf4));
+     return Result<Void>::Ok(Void());
+}
+
 Result<Void> FrameEncoder::encode_str(const char *str)
 {
     size_t len = strlen(str);
