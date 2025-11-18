@@ -25,7 +25,16 @@ Other features :
 - It also slows down the nbr of events per sec to an interval of 100msec, if there is no change.
 - it blinks the on-board esp32 led to indicate ransmission and alive
 - It shpuld also support to send ESP-NOW messages to the controller for rumble and led-control in a similar format as above, to_topic = FNV("ps4")
-
+## Build instructions 
+```sh
+cd bluepad32/
+cd external/btstack/port/esp32/
+IDF_PATH=../../../../src ./integrate_btstack.py
+cd ../../../../
+cd examples/esp32/
+. ~/esp/esp-idf/export.sh
+idf.py set-target esp32
+```
 
 # Bluepad32
 
