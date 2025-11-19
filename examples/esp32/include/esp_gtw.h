@@ -1,5 +1,4 @@
-#include <codec.h>
-#include "Log.h"
+#include "log.h"
 #include "errno.h"
 #include "esp_err.h"
 #include "esp_event.h"
@@ -14,15 +13,18 @@
 #include "nvs_flash.h"
 #include "esp_mac.h"
 #include "stdint.h"
+#include <result.h>
 
 //const uint8_t broadcast_mac[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
 class EspGtw {
    public:
-    Result<Void> init();
-    Result<Void> set_callback_receive(void (*func)(const esp_now_recv_info_t* recv_info, const uint8_t* data, int len));
-    Result<Void> set_pmk();
-    Result<Void> add_peer();
-    Result<Void> send(const uint8_t* data, int len);
-    Result<Void> deinit();
+    Result<bool> init();
+    Result<bool> set_callback_receive(void (*func)(const esp_now_recv_info_t* recv_info, const uint8_t* data, int len));
+    Result<bool> set_pmk();
+    Result<bool> add_peer();
+    Result<bool> send(const uint8_t* data, int len);
+    Result<bool> deinit();
 };
+
+typedef enum Ps4Event { Connected = 0, Disconnected, Data, OOB } Ps4Event;

@@ -1,4 +1,4 @@
-# PS4 console to ESP-NOW
+# PS4 console to ESP-NOW - release
 This repository uses the original bluepad32 code to capture ps4 events and send them on ESP-NOW.
 The events are encoded in CBOR serialization :
 Header:

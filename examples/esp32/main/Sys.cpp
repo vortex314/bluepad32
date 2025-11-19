@@ -5,10 +5,11 @@
  *      Author: lieven
  */
 
-#include <Log.h>
+#include <log.h>
 #include <Sys.h>
 #include <stdint.h>
 #include <sys/time.h>
+#include <cstring>
 //#include <espressif/esp_wifi.h>
 
 uint64_t Sys::_upTime;

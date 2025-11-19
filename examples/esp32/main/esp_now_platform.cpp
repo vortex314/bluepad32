@@ -9,12 +9,30 @@ extern "C" {
 #include <esp_timer.h>
 #include <msg.h>
 #include "esp_gtw.h"
-#include "ps4.h"
+#include "limero.h"
 // Custom "instance"
 
+#define BUTTON_SQUARE_MASK 0x04
+#define BUTTON_CROSS_MASK 0x01
+#define BUTTON_CIRCLE_MASK 0x02
+#define BUTTON_TRIANGLE_MASK 0x08
+
+#define BUTTON_LEFT_MASK 0x08
+#define BUTTON_DOWN_MASK 0x02
+#define BUTTON_RIGHT_MASK 0x04
+#define BUTTON_UP_MASK 0x01
+
+#define BUTTON_LEFT_SHOULDER_MASK 0x10
+#define BUTTON_RIGHT_SHOULDER_MASK 0x20
+#define BUTTON_LEFT_TRIGGER_MASK 0x40
+#define BUTTON_RIGHT_TRIGGER_MASK 0x80
+
+#define BUTTON_LEFT_JOYSTICK_MASK 0x100
+#define BUTTON_RIGHT_JOYSTICK_MASK 0x200
+#define BUTTON_SHARE_MASK 0x400
+
 EspGtw esp_gtw;
-FrameEncoder frame_encoder(200);
-FrameDecoder frame_decoder(200);
+
 uni_hid_device_t* hid_device = NULL;
 uint8_t lightbar_red, lightbar_green, lightbar_blue;
 
@@ -47,103 +65,40 @@ void led_toggle() {
     gpio_set_level(GPIO_LED, led_state);
 }
 
-const struct PropDescriptor {
-    Ps4 id;
-    const char* name;
-    const char* description;
-    uint8_t ValueType;
-    uint8_t ValueMode;
-} props[] = {
-    {Ps4::DPAD, "dpad_left", "Dpad", ValueType::UINT, ValueMode::READ},
+Ps4Info* gamepad_to_output(uni_gamepad_t* gp) {
+    Ps4Info* ps4_output = new Ps4Info();
+    ps4_output->button_left = gp->dpad & BUTTON_LEFT_MASK;
+    ps4_output->button_right = gp->dpad & BUTTON_RIGHT_MASK;
+    ps4_output->button_up = gp->dpad & BUTTON_UP_MASK;
+    ps4_output->button_down = gp->dpad & BUTTON_DOWN_MASK;
 
-    {Ps4::BUTTON_SQUARE, "button_square", "Square button", ValueType::UINT, ValueMode::READ},
-    {Ps4::BUTTON_CROSS, "button_cross", "Cross button", ValueType::UINT, ValueMode::READ},
-    {Ps4::BUTTON_CIRCLE, "button_circle", "Circle button", ValueType::UINT, ValueMode::READ},
-    {Ps4::BUTTON_TRIANGLE, "button_triangle", "Triangle button", ValueType::UINT, ValueMode::READ},
+    ps4_output->button_square = gp->buttons & BUTTON_SQUARE_MASK;
+    ps4_output->button_cross = gp->buttons & BUTTON_CROSS_MASK;
+    ps4_output->button_circle = gp->buttons & BUTTON_CIRCLE_MASK;
+    ps4_output->button_triangle = gp->buttons & BUTTON_TRIANGLE_MASK;
 
-    {Ps4::BUTTON_LEFT_SHOULDER, "button_left_shoulder", "Left Shoulder button", ValueType::UINT, ValueMode::READ},
-    {Ps4::BUTTON_RIGHT_SHOULDER, "button_right_shoulder", "Right Shoulder button", ValueType::UINT, ValueMode::READ},
-    {Ps4::BUTTON_LEFT_TRIGGER, "button_left_trigger", "Left Trigger button", ValueType::UINT, ValueMode::READ},
-    {Ps4::BUTTON_RIGHT_TRIGGER, "button_right_trigger", "Right Trigger button", ValueType::UINT, ValueMode::READ},
-    {Ps4::BUTTON_LEFT_JOYSTICK, "button_left_joystick", "Left Joystick button", ValueType::UINT, ValueMode::READ},
-    {Ps4::BUTTON_RIGHT_JOYSTICK, "button_right_joystick", "Right Joystick button", ValueType::UINT, ValueMode::READ},
-    {Ps4::BUTTON_SHARE, "button_share", "Share button", ValueType::UINT, ValueMode::READ},
+    ps4_output->button_left_sholder = gp->buttons & BUTTON_LEFT_SHOULDER_MASK;
+    ps4_output->button_right_sholder = gp->buttons & BUTTON_RIGHT_SHOULDER_MASK;
+    ps4_output->button_left_trigger = gp->buttons & BUTTON_LEFT_TRIGGER_MASK;
+    ps4_output->button_right_trigger = gp->buttons & BUTTON_RIGHT_TRIGGER_MASK;
 
-    {Ps4::STICK_LEFT_X, "axis_x", "Left Stick X", ValueType::INT, ValueMode::READ},
-    {Ps4::STICK_LEFT_Y, "axis_y", "Left Stick Y", ValueType::INT, ValueMode::READ},
-    {Ps4::STICK_RIGHT_X, "axis_rx", "Right Stick X", ValueType::INT, ValueMode::READ},
-    {Ps4::STICK_RIGHT_Y, "axis_ry", "Right Stick Y", ValueType::INT, ValueMode::READ},
+    ps4_output->button_left_joystick = gp->buttons & BUTTON_LEFT_JOYSTICK_MASK;
+    ps4_output->button_right_joystick = gp->buttons & BUTTON_RIGHT_JOYSTICK_MASK;
 
-    {Ps4::GYRO_X, "gyro_x", "Gyro X axis", ValueType::INT, ValueMode::READ},
-    {Ps4::GYRO_Y, "gyro_y", "Gyro Y axis", ValueType::INT, ValueMode::READ},
-    {Ps4::GYRO_Z, "gyro_z", "Gyro Z axis", ValueType::INT, ValueMode::READ},
+    ps4_output->button_share = gp->buttons & BUTTON_SHARE_MASK;
+    ps4_output->axis_lx = gp->axis_x >> 2;
+    ps4_output->axis_ly = gp->axis_y >> 2;
+    ps4_output->axis_rx = gp->axis_rx >> 2;
+    ps4_output->axis_ry = gp->axis_ry >> 2;
+    ps4_output->gyro_x = gp->gyro[0];
+    ps4_output->gyro_y = gp->gyro[1];
+    ps4_output->gyro_z = gp->gyro[2];
+    ps4_output->accel_x = gp->accel[0];
+    ps4_output->accel_y = gp->accel[1];
+    ps4_output->accel_z = gp->accel[2];
 
-    {Ps4::ACCEL_X, "accel_x", "Accelerometer X Axis ", ValueType::INT, ValueMode::READ},
-    {Ps4::ACCEL_Y, "accel_y", "Accelerometer Y Axis ", ValueType::INT, ValueMode::READ},
-    {Ps4::ACCEL_Z, "accel_z", "Accelerometer Z Axis ", ValueType::INT, ValueMode::READ},
-
-    {Ps4::RUMBLE, "rumble", "Rumble", ValueType::UINT, ValueMode::WRITE},
-    {Ps4::LED_GREEN, "led_green", "Green LED", ValueType::UINT, ValueMode::WRITE},
-    {Ps4::LED_RED, "led_red", "Red LED", ValueType::UINT, ValueMode::WRITE},
-    {Ps4::LED_BLUE, "led_blue", "Blue LED", ValueType::UINT, ValueMode::WRITE},
-};
-
-const struct MsgHeader desc_msg_header = {.dst = Option<uint32_t>::None(),
-                                          .src = Option<uint32_t>::Some(FNV("ps4")),
-                                          .msg_type = MsgType::Info,
-                                          .ret_code = Option<uint32_t>::None(),
-                                          .msg_id = Option<uint16_t>::None(),
-                                          .qos = Option<uint8_t>::None()};
-
-void send_obj_desc() {
-    frame_encoder.clear();
-
-    frame_encoder.begin_map();
-    desc_msg_header.encode(frame_encoder);
-    frame_encoder.end_map();
-
-    frame_encoder.begin_map();
-    frame_encoder.add_map(InfoPropertyId::PROP_ID, -1);
-    frame_encoder.encode_int32(InfoPropertyId::NAME);
-    frame_encoder.encode_str("ps4");  // name
-    frame_encoder.encode_int32(InfoPropertyId::DESCRIPTION);
-    frame_encoder.encode_str("PS4 Controller");  // description
-    frame_encoder.end_map();
-
-    esp_gtw.send(frame_encoder.data(), frame_encoder.size());
+    return ps4_output;
 }
-
-void send_prop_desc(uint32_t idx) {
-    frame_encoder.clear();
-
-    frame_encoder.begin_map();
-    desc_msg_header.encode(frame_encoder);
-    frame_encoder.end_map();
-
-    frame_encoder.begin_map();
-    frame_encoder.encode_int32(InfoPropertyId::PROP_ID);
-    frame_encoder.encode_uint32(props[prop_counter].id);
-    frame_encoder.encode_int32(InfoPropertyId::NAME);
-    frame_encoder.encode_str(props[prop_counter].name);
-    frame_encoder.encode_int32(InfoPropertyId::DESCRIPTION);
-    frame_encoder.encode_str(props[prop_counter].description);
-    frame_encoder.encode_int32(InfoPropertyId::TYPE);  // ValueType
-    frame_encoder.encode_uint32(props[prop_counter].ValueType);
-    frame_encoder.encode_int32(InfoPropertyId::MODE);  // ValueMode
-    frame_encoder.encode_uint32(props[prop_counter].ValueMode);
-    frame_encoder.end_map();
-
-    esp_gtw.send(frame_encoder.data(), frame_encoder.size());
-}
-
-const MsgHeader pub_header = {
-    .dst = Option<uint32_t>::None(),
-    .src = Option<uint32_t>::Some(FNV("ps4")),
-    .msg_type = MsgType::Pub,
-    .ret_code = Option<uint32_t>::None(),
-    .msg_id = Option<uint16_t>::None(),
-    .qos = Option<uint8_t>::None(),
-};
 
 void send_event(Ps4Event event, uni_gamepad_t* gp) {
     {
@@ -160,66 +115,28 @@ void send_event(Ps4Event event, uni_gamepad_t* gp) {
             memcpy(&prev_gamepad, gp, sizeof(uni_gamepad_t));
         led_toggle();
     }
-    frame_encoder.clear();
-    frame_encoder.begin_map();
-    pub_header.encode(frame_encoder);
-    frame_encoder.end_map();
+
+    Ps4Info* ps4_output = NULL;
 
     if (event == Ps4Event::Data && gp != NULL) {
-        frame_encoder.begin_map();
-        frame_encoder.add_map(Ps4::DPAD, gp->dpad);
-
-        frame_encoder.add_map(Ps4::BUTTON_SQUARE, gp->buttons & 0x4 ? 1 : 0);
-        frame_encoder.add_map(Ps4::BUTTON_CROSS, gp->buttons & 0x1 ? 1 : 0);
-        frame_encoder.add_map(Ps4::BUTTON_CIRCLE, gp->buttons & 0x2 ? 1 : 0);
-        frame_encoder.add_map(Ps4::BUTTON_TRIANGLE, gp->buttons & 0x8 ? 1 : 0);
-
-        frame_encoder.add_map(Ps4::BUTTON_LEFT_SHOULDER, gp->misc_buttons & 0x1);
-        frame_encoder.add_map(Ps4::BUTTON_RIGHT_SHOULDER, gp->misc_buttons & 0x2 ? 1 : 0);
-        frame_encoder.add_map(Ps4::BUTTON_LEFT_TRIGGER, gp->misc_buttons & 0x4 ? 1 : 0);
-        frame_encoder.add_map(Ps4::BUTTON_RIGHT_TRIGGER, gp->misc_buttons & 0x8 ? 1 : 0);
-
-        frame_encoder.add_map(Ps4::BUTTON_LEFT_JOYSTICK, gp->buttons & 0x100 ? 1 : 0);
-        frame_encoder.add_map(Ps4::BUTTON_RIGHT_JOYSTICK, gp->buttons & 0x200 ? 1 : 0);
-        frame_encoder.add_map(Ps4::BUTTON_SHARE, gp->buttons & 0x400 ? 1 : 0);
-
-        frame_encoder.add_map(Ps4::STICK_LEFT_X, gp->axis_x >> 2);
-        frame_encoder.add_map(Ps4::STICK_LEFT_Y, gp->axis_y >> 2);
-        frame_encoder.add_map(Ps4::STICK_RIGHT_X, gp->axis_rx >> 2);
-        frame_encoder.add_map(Ps4::STICK_RIGHT_Y, gp->axis_ry >> 2);
-
-        frame_encoder.add_map(Ps4::GYRO_X, gp->gyro[0]);
-        frame_encoder.add_map(Ps4::GYRO_Y, gp->gyro[1]);
-        frame_encoder.add_map(Ps4::GYRO_Z, gp->gyro[2]);
-
-        frame_encoder.add_map(Ps4::ACCEL_X, gp->accel[0]);
-        frame_encoder.add_map(Ps4::ACCEL_Y, gp->accel[1]);
-        frame_encoder.add_map(Ps4::ACCEL_Z, gp->accel[2]);
-        frame_encoder.end_map();
+        INFO("Sending data event\n");
+        ps4_output = gamepad_to_output(gp);
     } else if (event == Ps4Event::Disconnected) {
-        frame_encoder.begin_map();
-        frame_encoder.encode_int32(Ps4::CONNECTED);
-        frame_encoder.encode_bool(false);
-        frame_encoder.end_map();
+        Ps4Info* ps4_output = new Ps4Info();
+        ps4_output->connected = true;
     } else if (event == Ps4Event::Connected) {
-        frame_encoder.begin_map();
-        frame_encoder.encode_int32(Ps4::CONNECTED);
-        frame_encoder.encode_bool(true);
-        frame_encoder.end_map();
+        Ps4Info* ps4_output = new Ps4Info();
+        ps4_output->connected = false;
     } else
         return;
-    // send props
-    esp_gtw.send(frame_encoder.data(), frame_encoder.size());
 
-    if (send_counter++ % 10 == 0) {
-        // send object and prop description
-        send_obj_desc();
-        static int prop_counter = 0;
-        send_prop_desc(prop_counter++);
-        if (prop_counter == sizeof(props) / sizeof(PropDescriptor)) {
-            prop_counter = 0;
-        }
+    Result<Bytes> res = Ps4Info::json_serialize(*ps4_output);
+    delete ps4_output;
+    if (res.is_err()) {
+        return;
     }
+    Bytes encoded = res.unwrap();
+    auto v = esp_gtw.send(encoded.data(), encoded.size());
 }
 
 typedef struct my_platform_instance_s {
@@ -238,35 +155,31 @@ extern "C" void my_platform_init(int argc, const char** argv) {
     ARG_UNUSED(argv);
 
     logi("custom: init()\n");
-    esp_gtw.init();
-    esp_gtw.set_callback_receive([](const esp_now_recv_info_t* recv_info, const uint8_t* data, int len) {
+    auto v = esp_gtw.init();
+    auto v1 = esp_gtw.set_callback_receive([](const esp_now_recv_info_t* recv_info, const uint8_t* data, int len) {
         if (hid_device == NULL) {
             return;
         }
-        MsgHeader hdr;
-        frame_decoder.clear();
-        frame_decoder.fill_buffer(data, len);
-        hdr.decode(frame_decoder);
-        if (hdr.dst.is_some() && hdr.dst.unwrap() != FNV("ps4")) {
+        Result<Ps4Cmd*> res = Ps4Cmd::json_deserialize(Bytes(data, data + len));
+        if (res.is_err()) {
             return;
         }
-        Ps4Map ps4_msg;
-        if (ps4_msg.decode(frame_decoder).is_err()) {
-            return;
-        }
-        ps4_msg.rumble.inspect([&](rumble) {
-            if (hid->device->report_parser.play_dual_rumble != NULL)
+        Ps4Cmd* ps4_cmd = res.unwrap();
+        if (ps4_cmd->rumble) {
+            uint8_t rumble = *ps4_cmd->rumble;
+            if (hid_device->report_parser.play_dual_rumble != NULL)
                 hid_device->report_parser.play_dual_rumble(hid_device, 0, 250, rumble, rumble);
-        });
-        ps4_msg.lightbar_rgb.inspect([&](led) {
-            if (led_update && hid->device->report_parser.set_lightbar_color != NULL){
+        };
+        if (ps4_cmd->led_rgb) {
+            uint32_t led = *ps4_cmd->led_rgb;
+            if (hid_device->report_parser.set_lightbar_color != NULL) {
                 uint8_t r = (led & 0xff0000) >> 16;
                 uint8_t g = (led & 0x00ff00) >> 8;
                 uint8_t b = (led & 0x0000ff);
-               hid_device->report_parser.set_lightbar_color(hid_device, r,g,b);
+                hid_device->report_parser.set_lightbar_color(hid_device, r, g, b);
             }
-        });
-        
+        };
+        delete ps4_cmd;
     });
 
 #if 0
@@ -316,7 +229,7 @@ extern "C" uni_error_t my_platform_on_device_discovered(bd_addr_t addr, const ch
         logi("Ignoring keyboard\n");
         return UNI_ERROR_IGNORE_DEVICE;
     }
-    esp_gtw.send((uint8_t*)name, strlen(name));
+    auto v = esp_gtw.send((uint8_t*)name, strlen(name));
 
     return UNI_ERROR_SUCCESS;
 }
@@ -339,7 +252,7 @@ extern "C" uni_error_t my_platform_on_device_ready(uni_hid_device_t* d) {
     ins->gamepad_seat = GAMEPAD_SEAT_A;
 
     trigger_event_on_gamepad(d);
-    esp_gtw.send((uint8_t*)"Ready", 5);
+    auto v = esp_gtw.send((uint8_t*)"Ready", 5);
     return UNI_ERROR_SUCCESS;
 }
 

@@ -1,5 +1,7 @@
 #include "esp_gtw.h"
 
+Log logger;
+
 static uint8_t broadcast_mac[ESP_NOW_ETH_ALEN] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 const uint8_t CONFIG_ESPNOW_PMK[16] = {0};
 const int CONFIG_ESPNOW_CHANNEL = 1;
@@ -16,35 +18,34 @@ const char* TAG = "gtw_espnow";
 static esp_err_t gtw_espnow_init(void);
 static esp_err_t gtw_wifi_init(void);
 
-Log logger(10);
 
-Result<Void> EspGtw::init() {
+Result<bool> EspGtw::init() {
     if (gtw_wifi_init() != ESP_OK) {
-        return Result<Void>::Err(EINVAL, "Failed to initialize WiFi");
+        return Result<bool>::Err(EINVAL, "Failed to initialize WiFi");
     }
     if (gtw_espnow_init() != ESP_OK) {
-        return Result<Void>::Err(EINVAL, "Failed to initialize ESP-NOW");
+        return Result<bool>::Err(EINVAL, "Failed to initialize ESP-NOW");
     }
-    return {};
+    return Result<bool>::Ok(true) ;
 }
-Result<Void> EspGtw::set_callback_receive(void (*func)(const esp_now_recv_info_t* recv_info,
+Result<bool> EspGtw::set_callback_receive(void (*func)(const esp_now_recv_info_t* recv_info,
                                                        const uint8_t* data,
                                                        int len)) {
     if (esp_now_register_recv_cb(func) != ESP_OK) {
-        return Result<Void>::Err(EINVAL, "Failed to set receive callback");
+        return Result<bool>::Err(EINVAL, "Failed to set receive callback");
     }
-    return Result<Void>::Ok(Void());
+    return Result<bool>::Ok(bool());
 }
-Result<Void> EspGtw::set_pmk() {
+Result<bool> EspGtw::set_pmk() {
     if (esp_now_set_pmk((uint8_t*)CONFIG_ESPNOW_PMK) != ESP_OK) {
-        return Result<Void>::Err(EINVAL, "Failed to set PMK");
+        return Result<bool>::Err(EINVAL, "Failed to set PMK");
     }
-    return {};
+    return Result<bool>::Ok(true) ;
 }
-Result<Void> EspGtw::add_peer() {
+Result<bool> EspGtw::add_peer() {
     esp_now_peer_info_t* peer = (esp_now_peer_info_t*)malloc(sizeof(esp_now_peer_info_t));
     if (peer == NULL) {
-        return Result<Void>::Err(ENOMEM, "Failed to allocate memory for peer");
+        return Result<bool>::Err(ENOMEM, "Failed to allocate memory for peer");
     }
     memset(peer, 0, sizeof(esp_now_peer_info_t));
     peer->channel = CONFIG_ESPNOW_CHANNEL;
@@ -52,23 +53,23 @@ Result<Void> EspGtw::add_peer() {
     peer->encrypt = false;
     memcpy(peer->peer_addr, broadcast_mac, ESP_NOW_ETH_ALEN);
     if (esp_now_add_peer(peer) != ESP_OK) {
-        return Result<Void>::Err(EINVAL, "Failed to add peer");
+        return Result<bool>::Err(EINVAL, "Failed to add peer");
     }
     free(peer);
-    return {};
+    return Result<bool>::Ok(true) ;
 }
-Result<Void> EspGtw::send(const uint8_t* data, int len) {
+Result<bool> EspGtw::send(const uint8_t* data, int len) {
     if (esp_now_send(broadcast_mac, data, len) != ESP_OK) {
-        return Result<Void>::Err(EINVAL, "Failed to send data");
+        return Result<bool>::Err(EINVAL, "Failed to send data");
     }
-    return {};
+    return Result<bool>::Ok(true) ;
 }
-Result<Void> EspGtw::deinit() {
+Result<bool> EspGtw::deinit() {
     esp_now_deinit();
-    return {};
+    return Result<bool>::Ok(true) ;
 }
 
-static void gtw_espnow_send_cb(const uint8_t* mac_addr, esp_now_send_status_t status) {}
+static void gtw_espnow_send_cb(const esp_now_send_info_t *tx_info, esp_now_send_status_t status) {}
 
 static void gtw_espnow_recv_cb(const esp_now_recv_info_t* recv_info, const uint8_t* data, int len) {}
 

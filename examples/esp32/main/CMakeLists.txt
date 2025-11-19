@@ -1,4 +1,6 @@
-set(srcs "main.cpp" "esp_now_platform.cpp" "esp_gtw.cpp" "codec.cpp" "Log.cpp" "Sema.cpp" "Sys.cpp" )
+# glob(srcs "src/*.cpp" )
+
+FILE(GLOB_RECURSE srcs ${CMAKE_SOURCE_DIR}/main/*.*)
 
 set(requires "bluepad32" "btstack" )
 
